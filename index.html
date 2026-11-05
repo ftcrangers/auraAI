@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Assistant</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Babel for parsing JSX in browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Import React & Lucide Icons via ES Modules -->
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.263.1",
+        "@google/genai": "https://esm.sh/@google/genai@0.1.1"
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div id="root"></div>
+
+  <!-- Main Application Script -->
+  <script type="babel" data-type="module">
+    import React, { useState, useEffect, useRef } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { GoogleGenAI } from '@google/genai';
+    import { 
+      Sparkles, ShieldAlert, Zap, MessageSquare, Plus, Trash2, 
+      Settings, Lock, RefreshCw, Send, User, Bot, Check, Sliders
+    } from 'lucide-react';
+
+    function App() {
+      const [aiName, setAiName] = useState(() => localStorage.getItem('ai_name') || 'Aether');
+      const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+      const [isPrivate, setIsPrivate] = useState(false);
+      const [messages, setMessages] = useState([]);
+      const [input, setInput] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [userPreferences, setUserPreferences] = useState(() => {
+        return JSON.parse(localStorage.getItem('user_prefs') || '{"name": "User", "interests": []}');
+      });
+
+      const messagesEndRef = useRef(null);
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [messages]);
+
+      const handleSaveKey = (key) => {
+        setApiKey(key);
+        localStorage.setItem('gemini_api_key', key);
+      };
+
+      const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (!input.trim() || loading) return;
+
+        const userMsg = { id: Date.now(), role: 'user', text: input };
+        setMessages((prev) => [...prev, userMsg]);
+        setInput('');
+        setLoading(true);
+
+        try {
+          if (!apiKey) {
+            throw new Error('Please enter a Gemini API Key in the settings top bar.');
+          }
+
+          const ai = new GoogleGenAI({ apiKey });
+          
+          // Construct System Prompt with Preferences if NOT in Private Mode
+          let systemInstruction = `You are ${aiName}, a helpful AI assistant built with a clean, fast interface.`;
+          if (!isPrivate && userPreferences.interests.length > 0) {
+            systemInstruction += ` The user prefers topics such as: ${userPreferences.interests.join(', ')}. Customize your helpful tone accordingly.`;
+          }
+
+          // Simple memory update if Sync mode is active
+          if (!isPrivate) {
+            const updatedInterests = Array.from(new Set([...userPreferences.interests, ...input.split(' ').filter(w => w.length > 5).slice(0, 2)]));
+            const newPrefs = { ...userPreferences, interests: updatedInterests };
+            setUserPreferences(newPrefs);
+            localStorage.setItem('user_prefs', JSON.stringify(newPrefs));
+          }
+
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [...messages, userMsg].map(m => `${m.role === 'user' ? 'User' : aiName}: ${m.text}`).join('\n') + `\n${aiName}:`,
+            config: { systemInstruction }
+          });
+
+          const botMsg = { id: Date.now() + 1, role: 'model', text: response.text };
+          setMessages((prev) => [...prev, botMsg]);
+        } catch (err) {
+          setMessages((prev) => [
+            ...prev,
+            { id: Date.now() + 1, role: 'model', text: `⚠️ Error: ${err.message}` }
+          ]);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div class="flex h-screen w-full bg-slate-950 text-slate-100 overflow-hidden font-sans">
+          {/* Sidebar */}
+          <aside class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col p-4">
+            <div class="flex items-center space-x-2 mb-6">
+              <div class="p-2 bg-indigo-600 rounded-lg">
+                <Sparkles class="w-5 h-5 text-white" />
+              </div>
+              <span class="font-bold text-lg tracking-wide">{aiName}</span>
+            </div>
+
+            <button 
+              onClick={() => setMessages([])} 
+              class="flex items-center space-x-2 w-full p-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition text-sm font-medium mb-4"
+            >
+              <Plus class="w-4 h-4" />
+              <span>New Chat</span>
+            </button>
+
+            {/* Mode Selector */}
+            <div class="p-3 bg-slate-950/50 rounded-xl border border-slate-800 mb-4">
+              <span class="text-xs font-semibold text-slate-400 block mb-2 uppercase">Chat Mode</span>
+              <div class="flex space-x-1">
+                <button 
+                  onClick={() => setIsPrivate(false)} 
+                  class={`flex-1 py-1.5 px-2 text-xs rounded-lg transition ${!isPrivate ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Sync Mode
+                </button>
+                <button 
+                  onClick={() => setIsPrivate(true)} 
+                  class={`flex-1 py-1.5 px-2 text-xs rounded-lg transition ${isPrivate ? 'bg-amber-600 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Private Mode
+                </button>
+              </div>
+            </div>
+
+            {/* Memory Preview */}
+            <div class="flex-1 overflow-y-auto">
+              <div class="text-xs font-semibold text-slate-400 mb-2 uppercase">Synced Preferences</div>
+              {isPrivate ? (
+                <div class="text-xs text-amber-400/80 bg-amber-950/30 p-2.5 rounded-lg border border-amber-900/40 flex items-center gap-2">
+                  <Lock class="w-3.5 h-3.5 shrink-0" />
+                  <span>Private Chat active. History & data syncing are turned off.</span>
+                </div>
+              ) : (
+                <div class="space-y-1">
+                  {userPreferences.interests.length === 0 ? (
+                    <span class="text-xs text-slate-500">No synced preferences learned yet.</span>
+                  ) : (
+                    userPreferences.interests.map((pref, i) => (
+                      <span key={i} class="inline-block bg-slate-800 text-slate-300 text-xs px-2 py-1 rounded-md mr-1 mb-1">
+                        #{pref}
+                      </span>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </aside>
+
+          {/* Main Chat Area */}
+          <main class="flex-1 flex flex-col h-full bg-slate-950">
+            {/* Top Bar Key Setup */}
+            <header class="h-14 border-b border-slate-800 flex items-center justify-between px-6">
+              <div class="flex items-center space-x-2">
+                <span class={`w-2.5 h-2.5 rounded-full ${isPrivate ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
+                <span class="text-sm font-medium text-slate-300">
+                  {isPrivate ? 'Incognito Mode' : 'Data Sync Enabled'}
+                </span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <input 
+                  type="password" 
+                  placeholder="Enter Gemini API Key..." 
+                  value={apiKey}
+                  onChange={(e) => handleSaveKey(e.target.value)}
+                  class="bg-slate-900 border border-slate-800 text-xs px-3 py-1.5 rounded-lg w-64 focus:outline-none focus:border-indigo-500 text-slate-200"
+                />
+              </div>
+            </header>
+
+            {/* Chat Body */}
+            <div class="flex-1 overflow-y-auto p-6 space-y-4">
+              {messages.length === 0 ? (
+                <div class="h-full flex flex-col items-center justify-center text-center">
+                  <div class="p-4 bg-slate-900 rounded-full mb-4">
+                    <Sparkles class="w-8 h-8 text-indigo-400" />
+                  </div>
+                  <h2 class="text-2xl font-bold mb-2">Hello, I'm {aiName}</h2>
+                  <p class="text-slate-400 text-sm max-w-md">
+                    {isPrivate 
+                      ? 'Private Mode is active. I will answer your prompt without logging memory or updating preferences.'
+                      : 'Sync Mode is active. As we talk, I automatically learn your preferred style and sync context.'}
+                  </p>
+                </div>
+              ) : (
+                messages.map((m) => (
+                  <div key={m.id} class={`flex items-start space-x-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {m.role !== 'user' && (
+                      <div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center shrink-0">
+                        <Bot class="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                    <div class={`max-w-xl p-3.5 rounded-2xl text-sm leading-relaxed ${
+                      m.role === 'user' 
+                        ? 'bg-indigo-600 text-white rounded-tr-none' 
+                        : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-none'
+                    }`}>
+                      {m.text}
+                    </div>
+                    {m.role === 'user' && (
+                      <div class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0">
+                        <User class="w-4 h-4 text-slate-300" />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Bar */}
+            <footer class="p-4 border-t border-slate-800">
+              <form onSubmit={handleSendMessage} class="max-w-3xl mx-auto relative flex items-center">
+                <input 
+                  type="text" 
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={`Ask ${aiName} anything...`}
+                  class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 pr-12 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+                <button 
+                  type="submit" 
+                  disabled={loading}
+                  class="absolute right-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition disabled:opacity-50"
+                >
+                  <Send class="w-4 h-4" />
+                </button>
+              </form>
+            </footer>
+          </main>
+        </div>
+      );
+    }
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
