@@ -5,23 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Calypso AI</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen">
-  <div id="root"></div>
+  <div id="root">
+    <div class="p-8 text-center text-slate-400 text-sm">Loading Calypso AI interface...</div>
+  </div>
 
   <script type="text/babel">
     function App() {
-      const [apiKey, setApiKey] = React.useState(localStorage.getItem('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
-') || '');
+      const [apiKey, setApiKey] = React.useState(localStorage.getItem('groq_key') || '');
       const [isPrivate, setIsPrivate] = React.useState(false);
       const [messages, setMessages] = React.useState([]);
       const [input, setInput] = React.useState('');
       const [loading, setLoading] = React.useState(false);
       const [preferences, setPreferences] = React.useState(() => {
-        return JSON.parse(localStorage.getItem('calypso_prefs') || '[]');
+        try {
+          return JSON.parse(localStorage.getItem('calypso_prefs') || '[]');
+        } catch(e) { return []; }
       });
 
       const handleSaveKey = (e) => {
@@ -40,7 +43,6 @@
         setInput('');
         setLoading(true);
 
-        // Auto-extract preference keywords if in Sync Mode
         if (!isPrivate) {
           const words = input.split(' ').filter(w => w.length > 5).slice(0, 1);
           if (words.length > 0 && !preferences.includes(words[0])) {
@@ -95,7 +97,6 @@
           {/* Sidebar */}
           <aside class="w-64 bg-slate-900/80 border-r border-slate-800 flex flex-col p-4">
             <div class="flex items-center space-x-3 mb-6 px-1">
-              {/* Logo Placeholder - You can swap this <div> with an <img> tag later */}
               <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-md">
                 C
               </div>
@@ -129,7 +130,7 @@
               </div>
             </div>
 
-            {/* Synced Data */}
+            {/* Preferences */}
             <div class="flex-1 overflow-y-auto">
               <div class="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wider">Preferences</div>
               {isPrivate ? (
@@ -152,7 +153,7 @@
             </div>
           </aside>
 
-          {/* Main Container */}
+          {/* Main Area */}
           <main class="flex-1 flex flex-col h-full bg-slate-950">
             {/* Top Bar */}
             <header class="h-14 border-b border-slate-800 flex items-center justify-between px-6">
@@ -171,7 +172,7 @@
               />
             </header>
 
-            {/* Chat Body */}
+            {/* Chat Messages */}
             <div class="flex-1 overflow-y-auto p-6 space-y-4">
               {messages.length === 0 ? (
                 <div class="h-full flex flex-col items-center justify-center text-center">
@@ -201,7 +202,7 @@
               {loading && <div class="text-xs text-slate-500 italic pl-2">Calypso is typing...</div>}
             </div>
 
-            {/* Prompt Bar */}
+            {/* Input Footer */}
             <footer class="p-4 border-t border-slate-800">
               <form onSubmit={handleSendMessage} class="max-w-3xl mx-auto relative flex items-center">
                 <input 
