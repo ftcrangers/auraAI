@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Aether AI UI</title>
+  <title>Calypso AI</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -14,53 +14,109 @@
 
   <script type="text/babel">
     function App() {
-      const [aiName, setAiName] = React.useState('Aether');
-      const [apiKey, setApiKey] = React.useState('');
+      const [apiKey, setApiKey] = React.useState(localStorage.getItem('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
+') || '');
       const [isPrivate, setIsPrivate] = React.useState(false);
       const [messages, setMessages] = React.useState([]);
       const [input, setInput] = React.useState('');
-      const [preferences, setPreferences] = React.useState(['Tech', 'Gaming', 'Coding']);
+      const [loading, setLoading] = React.useState(false);
+      const [preferences, setPreferences] = React.useState(() => {
+        return JSON.parse(localStorage.getItem('calypso_prefs') || '[]');
+      });
 
-      const handleSendMessage = (e) => {
-        e.preventDefault();
-        if (!input.trim()) return;
-
-        // Add user message to UI state only (No AI connected)
-        const userMsg = { id: Date.now(), role: 'user', text: input };
-        setMessages((prev) => [...prev, userMsg]);
-        setInput('');
+      const handleSaveKey = (e) => {
+        const val = e.target.value;
+        setApiKey(val);
+        localStorage.setItem('groq_key', val);
       };
 
-      const handleNewChat = () => {
-        setMessages([]);
+      const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (!input.trim() || loading) return;
+
+        const userMsg = { id: Date.now(), role: 'user', text: input };
+        const updatedMessages = [...messages, userMsg];
+        setMessages(updatedMessages);
+        setInput('');
+        setLoading(true);
+
+        // Auto-extract preference keywords if in Sync Mode
+        if (!isPrivate) {
+          const words = input.split(' ').filter(w => w.length > 5).slice(0, 1);
+          if (words.length > 0 && !preferences.includes(words[0])) {
+            const newPrefs = [...preferences, words[0]];
+            setPreferences(newPrefs);
+            localStorage.setItem('calypso_prefs', JSON.stringify(newPrefs));
+          }
+        }
+
+        try {
+          if (!apiKey) {
+            throw new Error('Please enter your Groq API Key in the top right box.');
+          }
+
+          let systemPrompt = "You are Calypso, a helpful, conversational, and grounded assistant.";
+          if (!isPrivate && preferences.length > 0) {
+            systemPrompt += ` The user has expressed interest in: ${preferences.join(', ')}. Keep answers clear and relevant to their preferences.`;
+          }
+
+          const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${apiKey}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              "model": "llama-3.3-70b-versatile",
+              "messages": [
+                { "role": "system", "content": systemPrompt },
+                ...updatedMessages.map(m => ({
+                  role: m.role === 'user' ? 'user' : 'assistant',
+                  content: m.text
+                }))
+              ]
+            })
+          });
+
+          const data = await res.json();
+          if (data.error) throw new Error(data.error.message || 'Groq request failed.');
+
+          const botReply = data.choices[0].message.content;
+          setMessages((prev) => [...prev, { id: Date.now() + 1, role: 'assistant', text: botReply }]);
+        } catch (err) {
+          setMessages((prev) => [...prev, { id: Date.now() + 1, role: 'assistant', text: `⚠️ Error: ${err.message}` }]);
+        } finally {
+          setLoading(false);
+        }
       };
 
       return (
         <div class="flex h-screen w-full bg-slate-950 text-slate-100 overflow-hidden font-sans">
           {/* Sidebar */}
-          <aside class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col p-4">
-            <div class="flex items-center space-x-2 mb-6">
-              <div class="p-2 bg-indigo-600 rounded-lg">
-                <span class="text-white font-bold text-sm">✨</span>
+          <aside class="w-64 bg-slate-900/80 border-r border-slate-800 flex flex-col p-4">
+            <div class="flex items-center space-x-3 mb-6 px-1">
+              {/* Logo Placeholder - You can swap this <div> with an <img> tag later */}
+              <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-md">
+                C
               </div>
-              <span class="font-bold text-lg tracking-wide text-white">{aiName}</span>
+              <span class="font-bold text-lg tracking-wide text-white">Calypso AI</span>
             </div>
 
             <button 
-              onClick={handleNewChat}
-              class="flex items-center space-x-2 w-full p-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition text-sm font-medium mb-4"
+              onClick={() => setMessages([])} 
+              class="flex items-center space-x-2 w-full p-3 bg-slate-800/80 hover:bg-slate-700/80 rounded-xl transition text-sm font-medium mb-4 border border-slate-700/50"
             >
-              <span>+</span>
+              <span class="text-lg leading-none">+</span>
               <span>New Chat</span>
             </button>
 
-            {/* Chat Mode Selector */}
-            <div class="p-3 bg-slate-950/50 rounded-xl border border-slate-800 mb-4">
-              <span class="text-xs font-semibold text-slate-400 block mb-2 uppercase">Chat Mode</span>
+            {/* Chat Mode */}
+            <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800 mb-4">
+              <span class="text-[11px] font-semibold text-slate-400 block mb-2 uppercase tracking-wider">Chat Mode</span>
               <div class="flex space-x-1">
                 <button 
                   onClick={() => setIsPrivate(false)} 
-                  class={`flex-1 py-1.5 px-2 text-xs rounded-lg transition ${!isPrivate ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
+                  class={`flex-1 py-1.5 px-2 text-xs rounded-lg transition ${!isPrivate ? 'bg-cyan-600 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
                 >
                   Sync Mode
                 </button>
@@ -73,84 +129,92 @@
               </div>
             </div>
 
-            {/* Synced Preferences Panel */}
+            {/* Synced Data */}
             <div class="flex-1 overflow-y-auto">
-              <div class="text-xs font-semibold text-slate-400 mb-2 uppercase">Synced Preferences</div>
+              <div class="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wider">Preferences</div>
               {isPrivate ? (
-                <div class="text-xs text-amber-400/80 bg-amber-950/30 p-2.5 rounded-lg border border-amber-900/40">
-                  🔒 Private Chat active. Context and sync are disabled.
+                <div class="text-xs text-amber-400/90 bg-amber-950/30 p-2.5 rounded-lg border border-amber-900/40">
+                  🔒 Private Chat. Syncing paused.
                 </div>
               ) : (
-                <div class="space-y-1">
-                  {preferences.map((pref, i) => (
-                    <span key={i} class="inline-block bg-slate-800 text-slate-300 text-xs px-2 py-1 rounded-md mr-1 mb-1">
-                      #{pref}
-                    </span>
-                  ))}
+                <div class="flex flex-wrap gap-1">
+                  {preferences.length === 0 ? (
+                    <span class="text-xs text-slate-500">No synced tags yet.</span>
+                  ) : (
+                    preferences.map((pref, i) => (
+                      <span key={i} class="bg-slate-800 text-slate-300 text-xs px-2.5 py-1 rounded-full border border-slate-700/50">
+                        {pref}
+                      </span>
+                    ))
+                  )}
                 </div>
               )}
             </div>
           </aside>
 
-          {/* Main Chat Area */}
+          {/* Main Container */}
           <main class="flex-1 flex flex-col h-full bg-slate-950">
             {/* Top Bar */}
             <header class="h-14 border-b border-slate-800 flex items-center justify-between px-6">
               <div class="flex items-center space-x-2">
-                <span class={`w-2.5 h-2.5 rounded-full ${isPrivate ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
-                <span class="text-sm font-medium text-slate-300">
-                  {isPrivate ? 'Incognito Mode' : 'Data Sync Active'}
+                <span class={`w-2 h-2 rounded-full ${isPrivate ? 'bg-amber-500' : 'bg-cyan-400'}`}></span>
+                <span class="text-xs font-medium text-slate-300">
+                  {isPrivate ? 'Private Mode' : 'Sync Mode Active'}
                 </span>
               </div>
-              <div class="flex items-center space-x-2">
-                <input 
-                  type="password" 
-                  placeholder="Paste API Key here..." 
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  class="bg-slate-900 border border-slate-800 text-xs px-3 py-1.5 rounded-lg w-64 focus:outline-none focus:border-indigo-500 text-slate-200"
-                />
-              </div>
+              <input 
+                type="password" 
+                placeholder="Paste Groq API Key (gsk_...)" 
+                value={apiKey}
+                onChange={handleSaveKey}
+                class="bg-slate-900 border border-slate-800 text-xs px-3 py-1.5 rounded-lg w-72 focus:outline-none focus:border-cyan-500 text-slate-200"
+              />
             </header>
 
-            {/* Messages Body */}
+            {/* Chat Body */}
             <div class="flex-1 overflow-y-auto p-6 space-y-4">
               {messages.length === 0 ? (
                 <div class="h-full flex flex-col items-center justify-center text-center">
-                  <div class="p-4 bg-slate-900 rounded-full mb-4 text-2xl">
-                    ✨
+                  <div class="w-12 h-12 rounded-xl bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center text-xl font-bold mb-4">
+                    C
                   </div>
-                  <h2 class="text-2xl font-bold mb-2 text-white">Hello, I'm {aiName}</h2>
-                  <p class="text-slate-400 text-sm max-w-md">
+                  <h2 class="text-2xl font-semibold mb-2 text-white">Where would you like to start?</h2>
+                  <p class="text-slate-400 text-sm max-w-sm">
                     {isPrivate 
-                      ? 'Private Mode active. Messages won\'t update your profile preferences.'
-                      : 'Sync Mode active. Your preferences will sync across chats.'}
+                      ? 'Private session active. Your conversation is isolated.'
+                      : 'Ask a question, brainstorm ideas, or ask for help with code.'}
                   </p>
                 </div>
               ) : (
                 messages.map((m) => (
-                  <div key={m.id} class="flex items-start justify-end space-x-3">
-                    <div class="max-w-xl p-3.5 rounded-2xl text-sm leading-relaxed bg-indigo-600 text-white rounded-tr-none">
+                  <div key={m.id} class={`flex items-start ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div class={`max-w-2xl p-4 rounded-2xl text-sm leading-relaxed ${
+                      m.role === 'user' 
+                        ? 'bg-cyan-600 text-white rounded-tr-none' 
+                        : 'bg-slate-900/90 border border-slate-800 text-slate-200 rounded-tl-none shadow-sm'
+                    }`}>
                       {m.text}
                     </div>
                   </div>
                 ))
               )}
+              {loading && <div class="text-xs text-slate-500 italic pl-2">Calypso is typing...</div>}
             </div>
 
-            {/* Chat Input Bar */}
+            {/* Prompt Bar */}
             <footer class="p-4 border-t border-slate-800">
               <form onSubmit={handleSendMessage} class="max-w-3xl mx-auto relative flex items-center">
                 <input 
                   type="text" 
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder={`Type a message...`}
-                  class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 pr-12 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  placeholder="Message Calypso..."
+                  class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 pr-16 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
                 />
                 <button 
                   type="submit" 
-                  class="absolute right-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition text-xs font-semibold"
+                  disabled={loading}
+                  class="absolute right-2 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition text-xs font-medium disabled:opacity-50"
                 >
                   Send
                 </button>
